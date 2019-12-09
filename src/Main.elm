@@ -4,6 +4,8 @@ import Browser
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (onClick)
+import Url
+import Browser.Navigation as Nav
 import Http exposing (Error(..))
 import Json.Decode as Decode
 
@@ -32,6 +34,8 @@ type alias Model =
     , idToken : String
     , events: List Event
     , currentEvent: Maybe Event
+    , key: Nav.Key
+    , url: Url.Url
     }
 
 type alias Event = 
@@ -46,9 +50,9 @@ type alias Slide =
     }
 
 
-init : Int -> ( Model, Cmd Msg )
-init flags =
-    ( { counter = flags, serverMessage = "" , idToken = "", events = [], currentEvent = Nothing }, Cmd.none )
+init : Int -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
+init flags url key =
+    ( { counter = flags, serverMessage = "" , idToken = "", events = [], currentEvent = Nothing, key = key, url = url }, Cmd.none )
 
 subscriptions : Model -> Sub Msg
 subscriptions model = 
@@ -65,6 +69,8 @@ type Msg
     = SignIn
     | SignedIn String
     | Reload Page
+    | UrlChanged Url.Url
+    | LinkClicked Browser.UrlRequest
     | GotEvents (Result Http.Error (List Event))
 
 type Page = Login
@@ -75,7 +81,7 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update message model =
     case message of
         SignedIn token ->
-            ({ model | idToken = token}, Cmd.none )
+            ({ model | idToken = token}, Nav.pushUrl model.key "events")
         SignIn -> (model, signIn ())
         Reload page ->
             case page of
@@ -87,6 +93,14 @@ update message model =
                     ( { model | events = r }, Cmd.none )
                 Err err ->
                     ( { model | serverMessage = "Error: " ++ httpErrorToString err }, Cmd.none )
+        UrlChanged url -> 
+            case url.path of 
+                "/events" -> ( { model | url = url }, loadEvents model.idToken)
+                _ -> ( { model | url = url }, Cmd.none )
+        LinkClicked urlRequest -> 
+            case urlRequest of
+                Browser.Internal url -> (model, Nav.pushUrl model.key (Url.toString url) )
+                Browser.External href -> ( model, Nav.load href )
 
 loadEvents : String -> Cmd Msg
 loadEvents idToken = Http.request
@@ -129,15 +143,9 @@ eventListView model = case model.events of
     [] -> div [class "container"] [text "empty"
                         , button
                         [ class "pure-button pure-button-primary"
-                        , onClick <| Reload Events
+                        , href "events"
                         ]
                         [ text "Reload" ]
-                        ,
-                        button
-                        [ class "pure-button pure-button-primary"
-                        , onClick SignIn
-                        ]
-                        [ text "Sign in" ]
                         ]
     _ -> model.events |> List.map (\ev -> div [ class "container" ] [text ev.name, div [] [(eventView ev.slides)]]) |> div []
 
@@ -145,8 +153,9 @@ eventView : List Slide -> Html Msg
 eventView slides = slides |> List.map (\s -> ul [] [text s.sdid] ) |> div []
 
 view : Model -> Html Msg
-view model = case (model.idToken, model.events, model.currentEvent) of
-    ("", _, _) ->
+view model = case (model.idToken, model.url.path) of
+    (_, "/events") -> eventListView model
+    (_, _) ->
         div [ class "container" ]
             [ header []
                 [ -- img [ src "/images/logo.png" ] []
@@ -164,7 +173,6 @@ view model = case (model.idToken, model.events, model.currentEvent) of
                     ]
                 ]
             ]
-    (_, _, _) -> eventListView model
 
 -- DECODER
 
@@ -188,10 +196,15 @@ slideDecoder =
 -- MAIN
 -- ---------------------------
 
+onUrlRequest : Browser.UrlRequest -> Msg
+onUrlRequest urlRequest = LinkClicked urlRequest
+
+onUrlChange : Url.Url -> Msg
+onUrlChange url = UrlChanged url
 
 main : Program Int Model Msg
 main =
-    Browser.document
+    Browser.application
         { init = init
         , update = update
         , view =
@@ -200,4 +213,6 @@ main =
                 , body = [ view m ]
                 }
         , subscriptions = subscriptions
+        , onUrlRequest = onUrlRequest 
+        , onUrlChange = onUrlChange
         }
