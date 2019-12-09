@@ -1,4 +1,4 @@
-port module Main exposing (Model, Msg(..), add1, init, main, toJs, update, view, signedIn)
+port module Main exposing (Model, Msg(..), toJs, init, main, update, view, signedIn, signIn)
 
 import Browser
 import Html exposing (..)
@@ -62,11 +62,7 @@ baseURL = "http://192.168.1.21:8081"
 
 
 type Msg
-    = Inc
-    | Set Int
-    | TestServer
-    | OnServerResponse (Result Http.Error String)
-    | SignIn
+    = SignIn
     | SignedIn String
     | Reload Page
     | GotEvents (Result Http.Error (List Event))
@@ -75,32 +71,9 @@ type Page = Login
           | Events
           | EventEdit
 
-
 update : Msg -> Model -> ( Model, Cmd Msg )
 update message model =
     case message of
-        Inc ->
-            ( add1 model, toJs "Hello Js" )
-
-        Set m ->
-            ( { model | counter = m }, toJs "Hello Js" )
-
-        TestServer ->
-            let
-                expect =
-                    Http.expectJson OnServerResponse (Decode.field "result" Decode.string)
-            in
-            ( model
-            , Http.get { url = "/test", expect = expect }
-            )
-
-        OnServerResponse res ->
-            case res of
-                Ok r ->
-                    ( { model | serverMessage = r }, Cmd.none )
-
-                Err err ->
-                    ( { model | serverMessage = "Error: " ++ httpErrorToString err }, Cmd.none )
         SignedIn token ->
             ({ model | idToken = token}, Cmd.none )
         SignIn -> (model, signIn ())
@@ -145,15 +118,6 @@ httpErrorToString err =
             "BadBody: " ++ s
 
 
-{-| increments the counter
-
-    add1 5 --> 6
-
--}
-add1 : Model -> Model
-add1 model =
-    { model | counter = model.counter + 1 }
-
 
 
 -- ---------------------------
@@ -189,17 +153,8 @@ view model = case (model.idToken, model.events, model.currentEvent) of
                 span [ class "logo" ] []
                 , h1 [] [ text "Elm 0.19.1 Webpack Starter, with hot-reloading" ]
                 ]
-            , p [] [ text "Click on the button below to increment the state." ]
             , div [ class "pure-g" ]
                 [ div [ class "pure-u-1-3" ]
-                    [ button
-                        [ class "pure-button pure-button-primary"
-                        , onClick Inc
-                        ]
-                        [ text "+ 1" ]
-                    , text <| String.fromInt model.counter
-                    ]
-                , div [ class "pure-u-1-3" ] 
                     [ button
                         [ class "pure-button pure-button-primary"
                         , onClick SignIn
@@ -207,19 +162,6 @@ view model = case (model.idToken, model.events, model.currentEvent) of
                         [ text "Sign in" ]
                     , text <| model.idToken
                     ]
-                , div [ class "pure-u-1-3" ]
-                    [ button
-                        [ class "pure-button pure-button-primary"
-                        , onClick TestServer
-                        ]
-                        [ text "ping dev server" ]
-                    , text model.serverMessage
-                    ]
-                ]
-            , p [] [ text "Then make a change to the source code and see how the state is retained after you recompile." ]
-            , p []
-                [ text "And now don't forget to add a star to the Github repo "
-                , a [ href "https://github.com/simonh1000/elm-webpack-starter" ] [ text "elm-webpack-starter" ]
                 ]
             ]
     (_, _, _) -> eventListView model

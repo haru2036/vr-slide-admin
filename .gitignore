@@ -3,6 +3,7 @@ logs
 *.log
 .idea
 npm-debug.log*
+src/firebase.js
 
 
 # Compiled binary addons (http://nodejs.org/api/addons.html)
