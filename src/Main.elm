@@ -5,6 +5,8 @@ import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (onClick)
 import Url
+import Url.Builder as URLB
+import Url.Parser as URLP exposing((</>))
 import Browser.Navigation as Nav
 import Http exposing (Error(..))
 import Json.Decode as Decode
@@ -60,6 +62,21 @@ subscriptions model =
 
 
 baseURL = "http://192.168.1.21:8081"
+
+type Route
+  = Top
+  | Signin 
+  | EventsList
+  | EventDetail String
+
+route : URLP.Parser (Route -> a) a
+route =
+  URLP.oneOf
+    [ URLP.map Top (URLP.s "")
+    , URLP.map Signin (URLP.s "")
+    , URLP.map EventsList (URLP.s "events")
+    , URLP.map EventDetail (URLP.s "event" </> URLP.string)
+    ]
 -- ---------------------------
 -- UPDATE
 -- ---------------------------
@@ -72,6 +89,7 @@ type Msg
     | UrlChanged Url.Url
     | LinkClicked Browser.UrlRequest
     | GotEvents (Result Http.Error (List Event))
+    | GotEvent (Result Http.Error Event)
 
 type Page = Login
           | Events
@@ -81,7 +99,7 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update message model =
     case message of
         SignedIn token ->
-            ({ model | idToken = token}, Nav.pushUrl model.key "events")
+            ({ model | idToken = token}, Nav.pushUrl model.key "/events")
         SignIn -> (model, signIn ())
         Reload page ->
             case page of
@@ -93,9 +111,16 @@ update message model =
                     ( { model | events = r }, Cmd.none )
                 Err err ->
                     ( { model | serverMessage = "Error: " ++ httpErrorToString err }, Cmd.none )
+        GotEvent res ->
+            case res of
+                Ok r ->
+                    ( { model | currentEvent = Just r }, Cmd.none )
+                Err err ->
+                    ( { model | serverMessage = "Error: " ++ httpErrorToString err }, Cmd.none )
         UrlChanged url -> 
-            case url.path of 
-                "/events" -> ( { model | url = url }, loadEvents model.idToken)
+            case (URLP.parse route url) of 
+                Just EventsList -> ( { model | url = url }, loadEvents model.idToken)
+                Just (EventDetail name) -> ( {model | url = url}, loadEvent model.idToken name)
                 _ -> ( { model | url = url }, Cmd.none )
         LinkClicked urlRequest -> 
             case urlRequest of
@@ -109,6 +134,17 @@ loadEvents idToken = Http.request
     , body = Http.emptyBody
     , url = baseURL ++ "/api/events"
     , expect = Http.expectJson GotEvents eventsDecoder
+    , timeout = Nothing
+    , tracker = Nothing
+    }
+
+loadEvent : String -> String -> Cmd Msg
+loadEvent idToken eventId = Http.request
+    { method = "GET"
+    , headers = [Http.header "Authorization" ("Bearer " ++ idToken)]
+    , body = Http.emptyBody
+    , url = baseURL ++ "/api/event/" ++ eventId
+    , expect = Http.expectJson GotEvent eventDecoder
     , timeout = Nothing
     , tracker = Nothing
     }
@@ -143,18 +179,23 @@ eventListView model = case model.events of
     [] -> div [class "container"] [text "empty"
                         , button
                         [ class "pure-button pure-button-primary"
-                        , href "events"
                         ]
                         [ text "Reload" ]
                         ]
-    _ -> model.events |> List.map (\ev -> div [ class "container" ] [text ev.name, div [] [(eventView ev.slides)]]) |> div []
+    _ -> model.events |> List.map (\ev -> div [ class "container" ] [a [href <| URLB.relative ["event", ev.name] []] [text ev.name], div [] [(eventView ev.slides)]]) |> div []
+
+eventDetailView : Model -> Html Msg 
+eventDetailView model = case model.currentEvent of 
+    Just event -> div [ class "container" ] [text event.name, div [] [(eventView event.slides)]]
+    Nothing -> text "empty"
 
 eventView : List Slide -> Html Msg
 eventView slides = slides |> List.map (\s -> ul [] [text s.sdid] ) |> div []
 
 view : Model -> Html Msg
-view model = case (model.idToken, model.url.path) of
-    (_, "/events") -> eventListView model
+view model = case (model.idToken, URLP.parse route model.url) of
+    (_, Just EventsList) -> eventListView model
+    (_, Just (EventDetail eventName)) -> eventDetailView model
     (_, _) ->
         div [ class "container" ]
             [ header []
