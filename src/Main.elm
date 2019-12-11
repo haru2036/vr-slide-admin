@@ -97,6 +97,7 @@ type Msg
     | GotEvent (Result Http.Error Event)
     | EventModified ModifyAction
     | SaveEvent Event
+    | SavedEvent (Result Http.Error (List Event))
     | NoOp
 
 type ModifyAction = Swap Int Int
@@ -142,6 +143,15 @@ update message model =
                 Browser.External href -> ( model, Nav.load href )
         SaveEvent event -> 
             (model, putEvent model.idToken event)
+        SavedEvent res ->
+            case res of
+                Ok r ->
+                    case model.currentEvent of
+                        Just ev -> 
+                            ( model, Nav.pushUrl model.key (URLB.absolute ["event", ev.name] []))
+                        Nothing -> (model, Cmd.none)
+                Err err ->
+                    ( { model | serverMessage = "Error: " ++ httpErrorToString err }, Cmd.none )
         EventModified modifyAction ->
             case model.currentEvent of
                 Just event ->
@@ -188,7 +198,7 @@ putEvent idToken event = Http.request
     , headers = [Http.header "Authorization" ("Bearer " ++ idToken)]
     , body = Http.jsonBody <| eventEncoder event
     , url = baseURL ++ "/api/event/new"
-    , expect = Http.expectJson GotEvent eventDecoder
+    , expect = Http.expectJson SavedEvent eventsDecoder
     , timeout = Nothing
     , tracker = Nothing
     }
