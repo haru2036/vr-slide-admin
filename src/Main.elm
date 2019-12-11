@@ -12,6 +12,7 @@ import Url.Parser as URLP exposing((</>))
 import Browser.Navigation as Nav
 import Http exposing (Error(..))
 import Json.Decode as Decode
+import Json.Encode as Encode
 
 
 
@@ -95,6 +96,7 @@ type Msg
     | GotEvents (Result Http.Error (List Event))
     | GotEvent (Result Http.Error Event)
     | EventModified ModifyAction
+    | SaveEvent Event
     | NoOp
 
 type ModifyAction = Swap Int Int
@@ -138,6 +140,8 @@ update message model =
             case urlRequest of
                 Browser.Internal url -> (model, Nav.pushUrl model.key (Url.toString url) )
                 Browser.External href -> ( model, Nav.load href )
+        SaveEvent event -> 
+            (model, putEvent model.idToken event)
         EventModified modifyAction ->
             case model.currentEvent of
                 Just event ->
@@ -178,6 +182,18 @@ loadEvent idToken eventId = Http.request
     , tracker = Nothing
     }
 
+putEvent : String -> Event -> Cmd Msg
+putEvent idToken event = Http.request
+    { method = "PUT"
+    , headers = [Http.header "Authorization" ("Bearer " ++ idToken)]
+    , body = Http.jsonBody <| eventEncoder event
+    , url = baseURL ++ "/api/event/new"
+    , expect = Http.expectJson GotEvent eventDecoder
+    , timeout = Nothing
+    , tracker = Nothing
+    }
+
+
 httpErrorToString : Http.Error -> String
 httpErrorToString err =
     case err of
@@ -207,6 +223,7 @@ eventEditView : Model -> Html Msg
 eventEditView model = case model.currentEvent of
                 Just event -> div [] [text event.name, button [ class "pure-button pure-button-primary"
                                     , onClick <| EventModified AddSlide ] [text "Add"]
+                                    , button [ class "pure-button pure-button-primary", onClick <| SaveEvent event] [text "Save"]
                                     , event.slides |> List.indexedMap slideEditRow |> div []
                                         ]
                 Nothing -> button [ class "pure-button pure-button-primary"
@@ -261,7 +278,26 @@ view model = case (model.idToken, URLP.parse route model.url) of
                 ]
             ]
 
+-- ---------------------------
+-- ENCODER
+-- ---------------------------
+
+eventsEncoder : List Event -> Encode.Value
+eventsEncoder events = Encode.list eventEncoder events
+
+eventEncoder : Event -> Encode.Value
+eventEncoder event = Encode.object
+                        [ ("name", Encode.string event.name)
+                        , ("slides", Encode.list slideEncoder event.slides)]
+                        
+slideEncoder : Slide -> Encode.Value
+slideEncoder slide = Encode.object
+                    [ ("sdid", Encode.string slide.sdid) 
+                    , ("count", Encode.int slide.count)]
+
+-- ---------------------------
 -- DECODER
+-- ---------------------------
 
 eventsDecoder: Decode.Decoder (List Event)
 eventsDecoder = Decode.list eventDecoder
