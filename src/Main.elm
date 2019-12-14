@@ -44,7 +44,8 @@ type alias Model =
     }
 
 type alias Event = 
-    { slides: List Slide
+    { eventId: String
+    , slides: List Slide
     , authorId: String
     , name: String
     }
@@ -72,13 +73,14 @@ type Route
   | EventsList
   | EventDetail String
   | EventModify String
+  | EventCreate 
 
 route : URLP.Parser (Route -> a) a
 route =
   URLP.oneOf
-    [ URLP.map Top (URLP.s "")
-    , URLP.map Signin (URLP.s "")
+    [ URLP.map Signin (URLP.s "")
     , URLP.map EventsList (URLP.s "events")
+    , URLP.map EventCreate (URLP.s "event" </> URLP.s "new")
     , URLP.map EventDetail (URLP.s "event" </> URLP.string)
     , URLP.map EventModify (URLP.s "event" </> URLP.s "edit" </> URLP.string)
     ]
@@ -97,6 +99,7 @@ type Msg
     | GotEvent (Result Http.Error Event)
     | EventModified ModifyAction
     | SaveEvent Event
+    | CreateEvent Event
     | SavedEvent (Result Http.Error (List Event))
     | NoOp
 
@@ -104,6 +107,7 @@ type ModifyAction = Swap Int Int
                   | ChangeSlide Int Slide
                   | AddSlide 
                   | DeleteSlide Int
+                  | NameChanged String
 
 type Page = Login
           | Events
@@ -135,21 +139,24 @@ update message model =
         UrlChanged url -> 
             case (URLP.parse route url) of 
                 Just EventsList -> ( { model | url = url }, loadEvents model.idToken)
-                Just (EventDetail name) -> ( {model | url = url}, loadEvent model.idToken name)
-                Just (EventModify name) -> ( {model | url = url}, loadEvent model.idToken name)
+                Just (EventDetail uuid) -> ( {model | url = url}, loadEvent model.idToken uuid)
+                Just (EventModify uuid) -> ( {model | url = url}, loadEvent model.idToken uuid)
+                Just EventCreate -> ( {model | url = url, currentEvent = Just (Event "" [] "" "")}, Cmd.none)
                 _ -> ( { model | url = url }, Cmd.none )
         LinkClicked urlRequest -> 
             case urlRequest of
                 Browser.Internal url -> (model, Nav.pushUrl model.key (Url.toString url) )
                 Browser.External href -> ( model, Nav.load href )
         SaveEvent event -> 
-            (model, putEvent model.idToken event)
+                    (model, saveEvent model.idToken event)
+        CreateEvent event -> 
+                    (model, createEvent model.idToken event)
         SavedEvent res ->
             case res of
                 Ok r ->
                     case model.currentEvent of
                         Just ev -> 
-                            ( model, Nav.pushUrl model.key (URLB.absolute ["event", ev.name] []))
+                            ( model, Nav.pushUrl model.key (URLB.absolute ["event", ev.eventId] []))
                         Nothing -> (model, Cmd.none)
                 Err err ->
                     ( { model | serverMessage = "Error: " ++ httpErrorToString err }, Cmd.none )
@@ -178,6 +185,11 @@ update message model =
                                 oldCurrentEvent = event
                                 newCurrentEvent = Just ( { oldCurrentEvent | slides = deleteItem idx event.slides })
                             in ({model | currentEvent = newCurrentEvent}, Cmd.none)
+                        NameChanged name ->
+                            let
+                                oldCurrentEvent = event
+                                newCurrentEvent = Just ( { oldCurrentEvent | name = name})
+                            in ({model | currentEvent = newCurrentEvent}, Cmd.none)
                 Nothing -> ( model, Cmd.none ) 
 
 
@@ -203,12 +215,23 @@ loadEvent idToken eventId = Http.request
     , tracker = Nothing
     }
 
-putEvent : String -> Event -> Cmd Msg
-putEvent idToken event = Http.request
+saveEvent : String -> Event -> Cmd Msg
+saveEvent idToken event = Http.request
     { method = "PUT"
     , headers = [Http.header "Authorization" ("Bearer " ++ idToken)]
     , body = Http.jsonBody <| eventEncoder event
-    , url = baseURL ++ "/api/event/new"
+    , url = baseURL ++ "/api/event/" ++ event.eventId
+    , expect = Http.expectJson SavedEvent eventsDecoder
+    , timeout = Nothing
+    , tracker = Nothing
+    }
+
+createEvent : String -> Event -> Cmd Msg
+createEvent idToken event = Http.request
+    { method = "PUT"
+    , headers = [Http.header "Authorization" ("Bearer " ++ idToken)]
+    , body = Http.jsonBody <| eventEncoder event
+    , url = baseURL ++ "/api/event/new" 
     , expect = Http.expectJson SavedEvent eventsDecoder
     , timeout = Nothing
     , tracker = Nothing
@@ -242,9 +265,21 @@ httpErrorToString err =
 
 eventEditView : Model -> Html Msg
 eventEditView model = case model.currentEvent of
-                Just event -> div [] [text event.name, button [ class "pure-button pure-button-primary"
+                Just event -> div [] [input [onInput (\newName -> EventModified (NameChanged newName)), value event.name] []
+                                    , button [ class "pure-button pure-button-primary"
                                     , onClick <| EventModified AddSlide ] [text "Add"]
                                     , button [ class "pure-button pure-button-primary", onClick <| SaveEvent event] [text "Save"]
+                                    , event.slides |> List.indexedMap slideEditRow |> div []
+                                        ]
+                Nothing -> button [ class "pure-button pure-button-primary"
+                                    , onClick <| EventModified AddSlide ] [text "Add"]
+
+eventCreateView : Model -> Html Msg
+eventCreateView model = case model.currentEvent of
+                Just event -> div [] [input [onInput (\newName -> EventModified (NameChanged newName)), value event.name] []
+                                    , button [ class "pure-button pure-button-primary"
+                                    , onClick <| EventModified AddSlide ] [text "Add"]
+                                    , button [ class "pure-button pure-button-primary", onClick <| CreateEvent event] [text "Save"]
                                     , event.slides |> List.indexedMap slideEditRow |> div []
                                         ]
                 Nothing -> button [ class "pure-button pure-button-primary"
@@ -282,11 +317,14 @@ eventListView model = case model.events of
                         ]
                         [ text "Reload" ]
                         ]
-    _ -> model.events |> List.map (\ev -> div [ class "card" ] [a [href <| URLB.absolute ["event", ev.name] []] [text ev.name], div [] [(slideListView ev.slides)]]) |> div []
+    _ -> div [class "container" ] [ a
+                                    [ class "pure-button pure-button-primary"
+                                    , href <| URLB.absolute["event", "new"] []] [ text "Create new"]
+                                  , model.events |> List.map (\ev -> div [ class "card" ] [a [href <| URLB.absolute ["event", ev.eventId] []] [text ev.name], div [] [(slideListView ev.slides)]]) |> div []]
 
 eventDetailView : Model -> Html Msg 
 eventDetailView model = case model.currentEvent of 
-    Just event -> div [ class "container" ] [text event.name, a [href <| URLB.absolute ["event", "edit", event.name] []] [text "edit"], div [] [(slideListView event.slides)]]
+    Just event -> div [ class "container" ] [text event.name, a [href <| URLB.absolute ["event", "edit", event.eventId] []] [text "edit"], div [] [(slideListView event.slides)]]
     Nothing -> text "empty"
 
 slideListView : List Slide -> Html Msg
@@ -297,6 +335,7 @@ view model = case (model.idToken, URLP.parse route model.url) of
     (_, Just EventsList) -> eventListView model
     (_, Just (EventDetail eventName)) -> eventDetailView model
     (_, Just (EventModify eventName)) -> eventEditView model
+    (_, Just EventCreate) -> eventCreateView model
     (_, _) ->
         div [ class "container" ]
             [ header []
@@ -342,7 +381,8 @@ eventsDecoder = Decode.list eventDecoder
 
 eventDecoder : Decode.Decoder Event
 eventDecoder =
-  Decode.map3 Event
+  Decode.map4 Event
+    (Decode.field "uuid" Decode.string)
     (Decode.field "slides" (Decode.list slideDecoder))
     (Decode.field "authorId" Decode.string)
     (Decode.field "name" Decode.string)
