@@ -4,7 +4,7 @@ import Browser
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (onClick, onInput)
-import List.Extra exposing (setAt)
+import List.Extra exposing (setAt, swapAt)
 import String exposing(fromInt, toInt)
 import Url
 import Url.Builder as URLB
@@ -102,7 +102,8 @@ type Msg
 
 type ModifyAction = Swap Int Int
                   | ChangeSlide Int Slide
-                  | AddSlide
+                  | AddSlide 
+                  | DeleteSlide Int
 
 type Page = Login
           | Events
@@ -156,7 +157,11 @@ update message model =
             case model.currentEvent of
                 Just event ->
                     case modifyAction of
-                        Swap a b -> ( model, Cmd.none) --todo
+                        Swap a b -> 
+                            let
+                                oldCurrentEvent = event
+                                newCurrentEvent = Just ( { oldCurrentEvent | slides = swapAt a b event.slides })
+                            in ({model | currentEvent = newCurrentEvent}, Cmd.none)
                         ChangeSlide idx slide -> 
                             let
                                 oldCurrentEvent = event
@@ -166,6 +171,12 @@ update message model =
                             let
                                 oldCurrentEvent = event
                                 newCurrentEvent = Just ( { oldCurrentEvent | slides = Slide "" 0 :: event.slides })
+                            in ({model | currentEvent = newCurrentEvent}, Cmd.none)
+                        DeleteSlide idx -> 
+                            let
+                                deleteItem i list = List.take i list ++ List.drop (i + 1) list
+                                oldCurrentEvent = event
+                                newCurrentEvent = Just ( { oldCurrentEvent | slides = deleteItem idx event.slides })
                             in ({model | currentEvent = newCurrentEvent}, Cmd.none)
                 Nothing -> ( model, Cmd.none ) 
 
@@ -240,11 +251,28 @@ eventEditView model = case model.currentEvent of
                                     , onClick <| EventModified AddSlide ] [text "Add"]
 
 slideEditRow : Int -> Slide -> Html Msg
-slideEditRow index slide = ul [] [ input [onInput (\newSdid -> EventModified (ChangeSlide index {slide | sdid = newSdid })) , value slide.sdid ] []
-                                , input [type_ "number", onInput (\newCount -> case toInt newCount of
+slideEditRow index slide = div [ class "card"] 
+                               [ div [] 
+                                    [ text "SlideID: "
+                                    , input [onInput (\newSdid -> EventModified (ChangeSlide index {slide | sdid = newSdid })) , value slide.sdid ] []
+                                    ]
+                               , div [] 
+                                    [ text "Slide Count"
+                                    , input [type_ "number", onInput (\newCount -> case toInt newCount of
                                                                                 Just count -> EventModified (ChangeSlide index {slide | count = count })
                                                                                 Nothing -> NoOp
-                                                                    ) , value <| fromInt slide.count] []  ] 
+                                                                    ) , value <| fromInt slide.count] [] 
+                                    ]
+                               , button [ class "pure-button button-warning"
+                                        , onClick <| EventModified (DeleteSlide index ) ]
+                                        [ text "Delete" ]
+                               , button [ class "pure-button"
+                                        , onClick <| EventModified (Swap index (index - 1)) ]
+                                        [ text "Up" ]
+                               , button [ class "pure-button"
+                                        , onClick <| EventModified (Swap index (index + 1)) ]
+                                        [ text "Down" ]
+                               ] 
 
 eventListView : Model -> Html Msg
 eventListView model = case model.events of
@@ -254,7 +282,7 @@ eventListView model = case model.events of
                         ]
                         [ text "Reload" ]
                         ]
-    _ -> model.events |> List.map (\ev -> div [ class "container" ] [a [href <| URLB.absolute ["event", ev.name] []] [text ev.name], div [] [(slideListView ev.slides)]]) |> div []
+    _ -> model.events |> List.map (\ev -> div [ class "card" ] [a [href <| URLB.absolute ["event", ev.name] []] [text ev.name], div [] [(slideListView ev.slides)]]) |> div []
 
 eventDetailView : Model -> Html Msg 
 eventDetailView model = case model.currentEvent of 
