@@ -74,6 +74,7 @@ type Route
   | EventDetail String
   | EventModify String
   | EventCreate 
+  | RegisterRequired
 
 route : URLP.Parser (Route -> a) a
 route =
@@ -83,6 +84,7 @@ route =
     , URLP.map EventCreate (URLP.s "event" </> URLP.s "new")
     , URLP.map EventDetail (URLP.s "event" </> URLP.string)
     , URLP.map EventModify (URLP.s "event" </> URLP.s "edit" </> URLP.string)
+    , URLP.map RegisterRequired (URLP.s "registration" </> URLP.s "information")
     ]
 -- ---------------------------
 -- UPDATE
@@ -129,13 +131,13 @@ update message model =
                 Ok r ->
                     ( { model | events = r }, Cmd.none )
                 Err err ->
-                    ( { model | serverMessage = "Error: " ++ httpErrorToString err }, Cmd.none )
+                    ( { model | serverMessage = "Error: " ++ httpErrorToString err }, handleHttpError model.key err )
         GotEvent res ->
             case res of
                 Ok r ->
                     ( { model | currentEvent = Just r }, Cmd.none )
                 Err err ->
-                    ( { model | serverMessage = "Error: " ++ httpErrorToString err }, Cmd.none )
+                    ( { model | serverMessage = "Error: " ++ httpErrorToString err }, handleHttpError model.key err)
         UrlChanged url -> 
             case (URLP.parse route url) of 
                 Just EventsList -> ( { model | url = url }, loadEvents model.idToken)
@@ -159,7 +161,7 @@ update message model =
                             ( model, Nav.pushUrl model.key (URLB.absolute ["event", ev.eventId] []))
                         Nothing -> (model, Cmd.none)
                 Err err ->
-                    ( { model | serverMessage = "Error: " ++ httpErrorToString err }, Cmd.none )
+                    ( { model | serverMessage = "Error: " ++ httpErrorToString err }, handleHttpError model.key err)
         EventModified modifyAction ->
             case model.currentEvent of
                 Just event ->
@@ -256,6 +258,13 @@ httpErrorToString err =
         BadBody s ->
             "BadBody: " ++ s
 
+handleHttpError : Nav.Key -> Http.Error -> Cmd Msg
+handleHttpError key err = 
+    case err of
+        BadStatus 401 ->
+            Nav.pushUrl key <| URLB.absolute ["registration", "information"] []
+        _ -> Cmd.none
+
 
 
 
@@ -330,19 +339,34 @@ eventDetailView model = case model.currentEvent of
 slideListView : List Slide -> Html Msg
 slideListView slides = slides |> List.map (\s -> ul [] [text s.sdid] ) |> div []
 
-view : Model -> Html Msg
-view model = case (model.idToken, URLP.parse route model.url) of
-    (_, Just EventsList) -> eventListView model
-    (_, Just (EventDetail eventName)) -> eventDetailView model
-    (_, Just (EventModify eventName)) -> eventEditView model
-    (_, Just EventCreate) -> eventCreateView model
-    (_, _) ->
+registerInformationView : Model -> Html Msg
+registerInformationView model = 
+        div [ class "container" ]
+            [ header []
+                [ -- img [ src "/images/logo.png" ] []
+                  h1 [] [ text "Registration Required" ]
+                , text "このサービスは現在運営に許可されたユーザのみが使えるサービスです。もしあなたが許可されたユーザの場合はRegisterボタンを押してその旨を運営にお知らせください。"
+                ]
+            , div [ class "pure-g" ]
+                [ div [ class "pure-u-1-3" ]
+                    [   
+                        button
+                        [ class "pure-button pure-button-primary"
+                        , href <| URLB.absolute ["registration", "apply"] []
+                        ]
+                        [ text "Register" ]
+                    ]
+                ]
+            ]
+loginView : Model -> Html Msg
+loginView model =
         div [ class "container" ]
             [ header []
                 [ -- img [ src "/images/logo.png" ] []
                 span [ class "logo" ] []
-                , h1 [] [ text "Elm 0.19.1 Webpack Starter, with hot-reloading" ]
+                , h1 [] [ text "VRC-LT スライド管理" ]
                 ]
+                , text "このサービスは現在VRC-LT運営に許可されたユーザのみが使えるサービスとなっています。ログインした後に運営から許可されたユーザのみ利用できます。"
             , div [ class "pure-g" ]
                 [ div [ class "pure-u-1-3" ]
                     [ button
@@ -350,10 +374,18 @@ view model = case (model.idToken, URLP.parse route model.url) of
                         , onClick SignIn
                         ]
                         [ text "Sign in" ]
-                    , text <| model.idToken
                     ]
                 ]
             ]
+
+view : Model -> Html Msg
+view model = case (model.idToken, URLP.parse route model.url) of
+    (_, Just EventsList) -> eventListView model
+    (_, Just (EventDetail eventName)) -> eventDetailView model
+    (_, Just (EventModify eventName)) -> eventEditView model
+    (_, Just EventCreate) -> eventCreateView model
+    (_, Just RegisterRequired) -> registerInformationView model
+    (_, _) -> loginView model
 
 -- ---------------------------
 -- ENCODER
