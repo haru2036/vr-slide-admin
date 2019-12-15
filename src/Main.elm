@@ -13,6 +13,9 @@ import Browser.Navigation as Nav
 import Http exposing (Error(..))
 import Json.Decode as Decode
 import Json.Encode as Encode
+import Bootstrap.CDN as CDN
+import Bootstrap.Grid as Grid
+
 
 
 
@@ -372,12 +375,22 @@ loginView model =
             ]
 
 view : Model -> Html Msg
-view model = case (model.idToken, URLP.parse route model.url) of
-    (_, Just EventsList) -> eventListView model
-    (_, Just (EventModify eventName)) -> eventEditView model
-    (_, Just EventCreate) -> eventCreateView model
-    (_, Just RegisterRequired) -> registerInformationView model
-    (_, _) -> loginView model
+view model = 
+    Grid.container []
+        [ CDN.stylesheet -- creates an inline style node with the Bootstrap CSS
+        , Grid.row []
+            [ Grid.col []
+                [
+                    case (model.idToken, URLP.parse route model.url) of
+                        (_, Just EventsList) -> eventListView model
+                        (_, Just (EventModify eventName)) -> eventEditView model
+                        (_, Just EventCreate) -> eventCreateView model
+                        (_, Just RegisterRequired) -> registerInformationView model
+                        (_, _) -> loginView model
+                ]
+            ]
+
+        ]
 
 -- ---------------------------
 -- ENCODER
