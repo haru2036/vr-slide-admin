@@ -71,7 +71,6 @@ type Route
   = Top
   | Signin 
   | EventsList
-  | EventDetail String
   | EventModify String
   | EventCreate 
   | RegisterRequired
@@ -82,7 +81,6 @@ route =
     [ URLP.map Signin (URLP.s "")
     , URLP.map EventsList (URLP.s "events")
     , URLP.map EventCreate (URLP.s "event" </> URLP.s "new")
-    , URLP.map EventDetail (URLP.s "event" </> URLP.string)
     , URLP.map EventModify (URLP.s "event" </> URLP.s "edit" </> URLP.string)
     , URLP.map RegisterRequired (URLP.s "registration" </> URLP.s "information")
     ]
@@ -141,7 +139,6 @@ update message model =
         UrlChanged url -> 
             case (URLP.parse route url) of 
                 Just EventsList -> ( { model | url = url }, loadEvents model.idToken)
-                Just (EventDetail uuid) -> ( {model | url = url}, loadEvent model.idToken uuid)
                 Just (EventModify uuid) -> ( {model | url = url}, loadEvent model.idToken uuid)
                 Just EventCreate -> ( {model | url = url, currentEvent = Just (Event "" [] "" "")}, Cmd.none)
                 _ -> ( { model | url = url }, Cmd.none )
@@ -329,12 +326,8 @@ eventListView model = case model.events of
     _ -> div [class "container" ] [ a
                                     [ class "pure-button pure-button-primary"
                                     , href <| URLB.absolute["event", "new"] []] [ text "Create new"]
-                                  , model.events |> List.map (\ev -> div [ class "card" ] [a [href <| URLB.absolute ["event", ev.eventId] []] [text ev.name], div [] [(slideListView ev.slides)]]) |> div []]
+                                  , model.events |> List.map (\ev -> div [ class "card" ] [a [href <| URLB.absolute ["event", "edit", ev.eventId] []] [text ev.name], div [] [(slideListView ev.slides)]]) |> div []]
 
-eventDetailView : Model -> Html Msg 
-eventDetailView model = case model.currentEvent of 
-    Just event -> div [ class "container" ] [text event.name, a [href <| URLB.absolute ["event", "edit", event.eventId] []] [text "edit"], div [] [(slideListView event.slides)]]
-    Nothing -> text "empty"
 
 slideListView : List Slide -> Html Msg
 slideListView slides = slides |> List.map (\s -> ul [] [text s.sdid] ) |> div []
@@ -381,7 +374,6 @@ loginView model =
 view : Model -> Html Msg
 view model = case (model.idToken, URLP.parse route model.url) of
     (_, Just EventsList) -> eventListView model
-    (_, Just (EventDetail eventName)) -> eventDetailView model
     (_, Just (EventModify eventName)) -> eventEditView model
     (_, Just EventCreate) -> eventCreateView model
     (_, Just RegisterRequired) -> registerInformationView model
