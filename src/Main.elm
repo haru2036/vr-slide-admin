@@ -1,20 +1,22 @@
-port module Main exposing (Model, Msg(..), toJs, init, main, update, view, signedIn, signIn)
+port module Main exposing ( toJs, init, main, update, view, signedIn, signIn)
 
 import Browser
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (onClick, onInput)
 import List.Extra exposing (setAt, swapAt)
-import String exposing(fromInt, toInt)
 import Url
 import Url.Builder as URLB
 import Url.Parser as URLP exposing((</>))
 import Browser.Navigation as Nav
 import Http exposing (Error(..))
-import Json.Decode as Decode
-import Json.Encode as Encode
 import Bootstrap.CDN as CDN
 import Bootstrap.Grid as Grid
+import Model exposing (..)
+import Msg exposing (..)
+import View.Event exposing (..)
+import Encoder exposing(..)
+import Decoder exposing(..)
 
 
 
@@ -30,33 +32,6 @@ port signIn : () -> Cmd msg
 
 port signedIn : (String -> msg) -> Sub msg
 
-
--- ---------------------------
--- MODEL
--- ---------------------------
-
-
-type alias Model =
-    { counter : Int
-    , serverMessage : String
-    , idToken : String
-    , events: List Event
-    , currentEvent: Maybe Event
-    , key: Nav.Key
-    , url: Url.Url
-    }
-
-type alias Event = 
-    { eventId: String
-    , slides: List Slide
-    , authorId: String
-    , name: String
-    }
-
-type alias Slide = 
-    { sdid: String
-    , count: Int
-    }
 
 
 init : Int -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
@@ -92,29 +67,6 @@ route =
 -- ---------------------------
 
 
-type Msg
-    = SignIn
-    | SignedIn String
-    | Reload Page
-    | UrlChanged Url.Url
-    | LinkClicked Browser.UrlRequest
-    | GotEvents (Result Http.Error (List Event))
-    | GotEvent (Result Http.Error Event)
-    | EventModified ModifyAction
-    | SaveEvent Event
-    | CreateEvent Event
-    | SavedEvent (Result Http.Error Event)
-    | NoOp
-
-type ModifyAction = Swap Int Int
-                  | ChangeSlide Int Slide
-                  | AddSlide 
-                  | DeleteSlide Int
-                  | NameChanged String
-
-type Page = Login
-          | Events
-          | EventEdit
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update message model =
@@ -158,7 +110,7 @@ update message model =
                 Ok r ->
                     case model.currentEvent of
                         Just ev -> 
-                            ( model, Nav.pushUrl model.key (URLB.absolute ["event", ev.eventId] []))
+                            ( model, Nav.pushUrl model.key (URLB.absolute ["events"] []))
                         Nothing -> (model, Cmd.none)
                 Err err ->
                     ( { model | serverMessage = "Error: " ++ httpErrorToString err }, handleHttpError model.key err)
@@ -271,70 +223,6 @@ handleHttpError key err =
 -- ---------------------------
 -- VIEW
 -- ---------------------------
-
-eventEditView : Model -> Html Msg
-eventEditView model = case model.currentEvent of
-                Just event -> div [] [input [onInput (\newName -> EventModified (NameChanged newName)), value event.name] []
-                                    , button [ class "pure-button pure-button-primary"
-                                    , onClick <| EventModified AddSlide ] [text "Add"]
-                                    , button [ class "pure-button pure-button-primary", onClick <| SaveEvent event] [text "Save"]
-                                    , event.slides |> List.indexedMap slideEditRow |> div []
-                                        ]
-                Nothing -> button [ class "pure-button pure-button-primary"
-                                    , onClick <| EventModified AddSlide ] [text "Add"]
-
-eventCreateView : Model -> Html Msg
-eventCreateView model = case model.currentEvent of
-                Just event -> div [] [input [onInput (\newName -> EventModified (NameChanged newName)), value event.name] []
-                                    , button [ class "pure-button pure-button-primary"
-                                    , onClick <| EventModified AddSlide ] [text "Add"]
-                                    , button [ class "pure-button pure-button-primary", onClick <| CreateEvent event] [text "Save"]
-                                    , event.slides |> List.indexedMap slideEditRow |> div []
-                                        ]
-                Nothing -> button [ class "pure-button pure-button-primary"
-                                    , onClick <| EventModified AddSlide ] [text "Add"]
-
-slideEditRow : Int -> Slide -> Html Msg
-slideEditRow index slide = div [ class "card"] 
-                               [ div [] 
-                                    [ text "SlideID: "
-                                    , input [onInput (\newSdid -> EventModified (ChangeSlide index {slide | sdid = newSdid })) , value slide.sdid ] []
-                                    ]
-                               , div [] 
-                                    [ text "Slide Count"
-                                    , input [type_ "number", onInput (\newCount -> case toInt newCount of
-                                                                                Just count -> EventModified (ChangeSlide index {slide | count = count })
-                                                                                Nothing -> NoOp
-                                                                    ) , value <| fromInt slide.count] [] 
-                                    ]
-                               , button [ class "pure-button button-warning"
-                                        , onClick <| EventModified (DeleteSlide index ) ]
-                                        [ text "Delete" ]
-                               , button [ class "pure-button"
-                                        , onClick <| EventModified (Swap index (index - 1)) ]
-                                        [ text "Up" ]
-                               , button [ class "pure-button"
-                                        , onClick <| EventModified (Swap index (index + 1)) ]
-                                        [ text "Down" ]
-                               ] 
-
-eventListView : Model -> Html Msg
-eventListView model = case model.events of
-    [] -> div [class "container"] [text "empty"
-                        , button
-                        [ class "pure-button pure-button-primary"
-                        ]
-                        [ text "Reload" ]
-                        ]
-    _ -> div [class "container" ] [ a
-                                    [ class "pure-button pure-button-primary"
-                                    , href <| URLB.absolute["event", "new"] []] [ text "Create new"]
-                                  , model.events |> List.map (\ev -> div [ class "card" ] [a [href <| URLB.absolute ["event", "edit", ev.eventId] []] [text ev.name], div [] [(slideListView ev.slides)]]) |> div []]
-
-
-slideListView : List Slide -> Html Msg
-slideListView slides = slides |> List.map (\s -> ul [] [text s.sdid] ) |> div []
-
 registerInformationView : Model -> Html Msg
 registerInformationView model = 
         div [ class "container" ]
@@ -392,43 +280,6 @@ view model =
 
         ]
 
--- ---------------------------
--- ENCODER
--- ---------------------------
-
-eventsEncoder : List Event -> Encode.Value
-eventsEncoder events = Encode.list eventEncoder events
-
-eventEncoder : Event -> Encode.Value
-eventEncoder event = Encode.object
-                        [ ("name", Encode.string event.name)
-                        , ("slides", Encode.list slideEncoder event.slides)]
-                        
-slideEncoder : Slide -> Encode.Value
-slideEncoder slide = Encode.object
-                    [ ("sdid", Encode.string slide.sdid) 
-                    , ("count", Encode.int slide.count)]
-
--- ---------------------------
--- DECODER
--- ---------------------------
-
-eventsDecoder: Decode.Decoder (List Event)
-eventsDecoder = Decode.list eventDecoder
-
-eventDecoder : Decode.Decoder Event
-eventDecoder =
-  Decode.map4 Event
-    (Decode.field "uuid" Decode.string)
-    (Decode.field "slides" (Decode.list slideDecoder))
-    (Decode.field "authorId" Decode.string)
-    (Decode.field "name" Decode.string)
-
-slideDecoder : Decode.Decoder Slide
-slideDecoder = 
-    Decode.map2 Slide
-        (Decode.field "sdid" Decode.string)
-        (Decode.field "count" Decode.int)
 
 -- ---------------------------
 -- MAIN
