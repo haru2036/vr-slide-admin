@@ -100,7 +100,7 @@ type Msg
     | EventModified ModifyAction
     | SaveEvent Event
     | CreateEvent Event
-    | SavedEvent (Result Http.Error (List Event))
+    | SavedEvent (Result Http.Error Event)
     | NoOp
 
 type ModifyAction = Swap Int Int
@@ -221,7 +221,7 @@ saveEvent idToken event = Http.request
     , headers = [Http.header "Authorization" ("Bearer " ++ idToken)]
     , body = Http.jsonBody <| eventEncoder event
     , url = baseURL ++ "/api/event/" ++ event.eventId
-    , expect = Http.expectJson SavedEvent eventsDecoder
+    , expect = Http.expectJson SavedEvent eventDecoder
     , timeout = Nothing
     , tracker = Nothing
     }
@@ -232,7 +232,7 @@ createEvent idToken event = Http.request
     , headers = [Http.header "Authorization" ("Bearer " ++ idToken)]
     , body = Http.jsonBody <| eventEncoder event
     , url = baseURL ++ "/api/event/new" 
-    , expect = Http.expectJson SavedEvent eventsDecoder
+    , expect = Http.expectJson SavedEvent eventDecoder
     , timeout = Nothing
     , tracker = Nothing
     }
