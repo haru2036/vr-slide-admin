@@ -10,6 +10,7 @@ import Bootstrap.Button as Button
 import Bootstrap.Grid as Grid
 import Bootstrap.Grid.Col as Col
 import Bootstrap.Grid.Row as Row 
+import List
 
 eventEditView : Model -> Html Msg
 eventEditView model = case model.currentEvent of
@@ -34,8 +35,12 @@ eventCreateView model = case model.currentEvent of
                                     , onClick <| EventModified AddSlide ] [text "Add"]
 
 slideEditRow : Int -> Slide -> Html Msg
-slideEditRow index slide = Grid.container [ class "card"] 
-                               [ Grid.row [] [
+slideEditRow index slide = Grid.container [ class "card"
+                                          , style "background-image" ("url(\"" ++ firstPageUrl slide.sdid ++ "\")")
+                                          , style "background-size" "contain"
+                                          , style "background-repeat" "no-repeat"
+                                          ] 
+                               [ Grid.row [ Row.attrs <| [class "slide-edit-content"]] [
                                    Grid.col [] [
                                     div [] 
                                         [ text "SlideID: "
@@ -61,6 +66,14 @@ slideEditRow index slide = Grid.container [ class "card"]
                                 ] 
                                ] 
                                ]
+
+firstPageUrl : String -> String
+firstPageUrl slideId = case slideId of 
+    "" -> ""
+    _ -> String.concat ["https://speakerd.s3.amazonaws.com/presentations/",
+            slideId,
+            "/preview_slide_0",
+            ".jpg?373063"] 
 
 eventListView : Model -> Html Msg
 eventListView model = case model.events of
