@@ -65,10 +65,7 @@ slideEditRow index slide = Grid.container [ class "card"]
 eventListView : Model -> Html Msg
 eventListView model = case model.events of
     [] -> div [class "container"] [text "empty"
-                        , button
-                        [ class "pure-button pure-button-primary"
-                        ]
-                        [ text "Reload" ]
+                        , a [ class "pure-button pure-button-primary", href <| URLB.absolute["event", "new"] []] [ text "Create new"]
                         ]
     _ -> div [class "container" ] [ a
                                     [ class "pure-button pure-button-primary"
