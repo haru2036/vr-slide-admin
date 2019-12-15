@@ -11,6 +11,7 @@ import Bootstrap.Grid as Grid
 import Bootstrap.Grid.Col as Col
 import Bootstrap.Grid.Row as Row 
 import List
+import Bootstrap.Form.Input as Input
 
 eventEditView : Model -> Html Msg
 eventEditView model = case model.currentEvent of
@@ -44,14 +45,14 @@ slideEditRow index slide = Grid.container [ class "card"
                                    Grid.col [] [
                                     div [] 
                                         [ text "SlideID: "
-                                        , input [onInput (\newSdid -> EventModified (ChangeSlide index {slide | sdid = newSdid })) , value slide.sdid ] []
+                                        , Input.text [Input.attrs [onInput (\newSdid -> EventModified (ChangeSlide index {slide | sdid = newSdid })) , value slide.sdid]]  
                                         ]
                                     , div [] 
                                         [ text "Slide Count"
-                                        , input [type_ "number", onInput (\newCount -> case toInt newCount of
+                                        , Input.number [Input.attrs [onInput (\newCount -> case toInt newCount of
                                                                                     Just count -> EventModified (ChangeSlide index {slide | count = count })
                                                                                     Nothing -> NoOp
-                                                                        ) , value <| fromInt slide.count] [] 
+                                                                        ) , value <| fromInt slide.count]]
                                         ]
                                    ]
                                , Grid.col [] [
