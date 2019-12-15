@@ -14,9 +14,9 @@ import Bootstrap.Grid.Row as Row
 eventEditView : Model -> Html Msg
 eventEditView model = case model.currentEvent of
                 Just event -> div [] [input [onInput (\newName -> EventModified (NameChanged newName)), value event.name] []
-                                    , button [ class "pure-button pure-button-primary"
-                                    , onClick <| EventModified AddSlide ] [text "Add"]
+                                    , button [ class "pure-button pure-button-primary", onClick <| EventModified AddSlide ] [text "Add"]
                                     , button [ class "pure-button pure-button-primary", onClick <| SaveEvent event] [text "Save"]
+                                    , Button.button [ Button.danger, Button.attrs [onClick <| DeleteEvent event]] [text "Delete"]
                                     , event.slides |> List.indexedMap slideEditRow |> div []
                                         ]
                 Nothing -> button [ class "pure-button pure-button-primary"

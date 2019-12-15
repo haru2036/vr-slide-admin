@@ -16,8 +16,10 @@ type Msg
     | GotEvent (Result Http.Error Event)
     | EventModified ModifyAction
     | SaveEvent Event
+    | DeleteEvent Event
     | CreateEvent Event
     | SavedEvent (Result Http.Error Event)
+    | DeletedEvent (Result Http.Error ())
     | NoOp
 
 type ModifyAction = Swap Int Int

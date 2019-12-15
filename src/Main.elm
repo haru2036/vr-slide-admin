@@ -103,6 +103,8 @@ update message model =
                 Browser.External href -> ( model, Nav.load href )
         SaveEvent event -> 
                     (model, saveEvent model.idToken event)
+        DeleteEvent event -> 
+                    (model, deleteEvent model.idToken event)
         CreateEvent event -> 
                     (model, createEvent model.idToken event)
         SavedEvent res ->
@@ -112,6 +114,12 @@ update message model =
                         Just ev -> 
                             ( model, Nav.pushUrl model.key (URLB.absolute ["events"] []))
                         Nothing -> (model, Cmd.none)
+                Err err ->
+                    ( { model | serverMessage = "Error: " ++ httpErrorToString err }, handleHttpError model.key err)
+        DeletedEvent res ->
+            case res of
+                Ok r ->
+                    ( { model | currentEvent = Nothing }, Nav.pushUrl model.key (URLB.absolute ["events"] [] ))
                 Err err ->
                     ( { model | serverMessage = "Error: " ++ httpErrorToString err }, handleHttpError model.key err)
         EventModified modifyAction ->
@@ -176,6 +184,17 @@ saveEvent idToken event = Http.request
     , body = Http.jsonBody <| eventEncoder event
     , url = baseURL ++ "/api/event/" ++ event.eventId
     , expect = Http.expectJson SavedEvent eventDecoder
+    , timeout = Nothing
+    , tracker = Nothing
+    }
+
+deleteEvent : String -> Event -> Cmd Msg
+deleteEvent idToken event = Http.request
+    { method = "Delete"
+    , headers = [Http.header "Authorization" ("Bearer " ++ idToken)]
+    , body = Http.jsonBody <| eventEncoder event
+    , url = baseURL ++ "/api/event/" ++ event.eventId
+    , expect = Http.expectWhatever DeletedEvent 
     , timeout = Nothing
     , tracker = Nothing
     }
