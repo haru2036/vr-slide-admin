@@ -6,6 +6,10 @@ import Html.Attributes exposing (..)
 import Html.Events exposing (onClick, onInput)
 import Url.Builder as URLB
 import String exposing(fromInt, toInt)
+import Bootstrap.Button as Button
+import Bootstrap.Grid as Grid
+import Bootstrap.Grid.Col as Col
+import Bootstrap.Grid.Row as Row 
 
 eventEditView : Model -> Html Msg
 eventEditView model = case model.currentEvent of
@@ -30,28 +34,33 @@ eventCreateView model = case model.currentEvent of
                                     , onClick <| EventModified AddSlide ] [text "Add"]
 
 slideEditRow : Int -> Slide -> Html Msg
-slideEditRow index slide = div [ class "card"] 
-                               [ div [] 
-                                    [ text "SlideID: "
-                                    , input [onInput (\newSdid -> EventModified (ChangeSlide index {slide | sdid = newSdid })) , value slide.sdid ] []
-                                    ]
-                               , div [] 
-                                    [ text "Slide Count"
-                                    , input [type_ "number", onInput (\newCount -> case toInt newCount of
-                                                                                Just count -> EventModified (ChangeSlide index {slide | count = count })
-                                                                                Nothing -> NoOp
-                                                                    ) , value <| fromInt slide.count] [] 
-                                    ]
-                               , button [ class "pure-button button-warning"
-                                        , onClick <| EventModified (DeleteSlide index ) ]
-                                        [ text "Delete" ]
-                               , button [ class "pure-button"
+slideEditRow index slide = Grid.container [ class "card"] 
+                               [ Grid.row [] [
+                                   Grid.col [] [
+                                    div [] 
+                                        [ text "SlideID: "
+                                        , input [onInput (\newSdid -> EventModified (ChangeSlide index {slide | sdid = newSdid })) , value slide.sdid ] []
+                                        ]
+                                    , div [] 
+                                        [ text "Slide Count"
+                                        , input [type_ "number", onInput (\newCount -> case toInt newCount of
+                                                                                    Just count -> EventModified (ChangeSlide index {slide | count = count })
+                                                                                    Nothing -> NoOp
+                                                                        ) , value <| fromInt slide.count] [] 
+                                        ]
+                                   ]
+                               , Grid.col [] [
+                                    button [ class "pure-button"
                                         , onClick <| EventModified (Swap index (index - 1)) ]
                                         [ text "Up" ]
-                               , button [ class "pure-button"
+                                    , button [ class "pure-button"
                                         , onClick <| EventModified (Swap index (index + 1)) ]
                                         [ text "Down" ]
+                                    , Button.button [Button.warning, Button.attrs [onClick <| EventModified (DeleteSlide index )] ]
+                                        [ text "Delete" ]
+                                ] 
                                ] 
+                               ]
 
 eventListView : Model -> Html Msg
 eventListView model = case model.events of
