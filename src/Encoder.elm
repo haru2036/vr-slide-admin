@@ -1,5 +1,5 @@
 module Encoder exposing (eventsEncoder, eventEncoder, slideEncoder)
-import Model exposing (..)
+import Types exposing (..)
 import Json.Encode as Encode
 -- ---------------------------
 -- ENCODER

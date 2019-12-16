@@ -4,7 +4,6 @@ import Browser
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (onClick, onInput)
-import List.Extra exposing (setAt, swapAt)
 import Url
 import Url.Builder as URLB
 import Url.Parser as URLP exposing((</>))
@@ -12,11 +11,13 @@ import Browser.Navigation as Nav
 import Http exposing (Error(..))
 import Bootstrap.CDN as CDN
 import Bootstrap.Grid as Grid
-import Model exposing (..)
-import Msg exposing (..)
-import View.Event exposing (..)
 import Encoder exposing(..)
 import Decoder exposing(..)
+import Session
+import Pages.EventList as EL
+import Pages.EventCreate as EC
+import Pages.EventEdit as EE
+import Types exposing (..)
 
 
 
@@ -36,35 +37,64 @@ port signedIn : (String -> msg) -> Sub msg
 
 init : Int -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
 init flags url key =
-    ( { counter = flags, serverMessage = "" , idToken = "", events = [], currentEvent = Nothing, key = key, url = url }, Cmd.none )
+    ( { counter = flags, serverMessage = "" , session = Session.empty key , page = Login, key = key, url = url }, Cmd.none )
 
 subscriptions : Model -> Sub Msg
 subscriptions model = 
                 Sub.batch [ signedIn SignedIn ]
 
 
-baseURL = "http://192.168.1.21:8081"
+-- ---------------------------
+-- MODEL
+-- ---------------------------
+
+
+type alias Model =
+    { counter : Int
+    , serverMessage : String
+    , session: Session.Data
+    , page: Page
+    , key: Nav.Key
+    , url: Url.Url
+    }
+
+type Page = Login
+        | EventList EL.Model
+        | EventCreate EC.Model
+        | EventEdit EE.Model
+        | RegisterRequired
 
 type Route
-  = Top
-  | Signin 
-  | EventsList
-  | EventModify String
-  | EventCreate 
-  | RegisterRequired
+  = RTop
+  | RSignin 
+  | REventsList
+  | REventModify String
+  | REventCreate 
+  | RRegisterRequired
 
 route : URLP.Parser (Route -> a) a
 route =
   URLP.oneOf
-    [ URLP.map Signin (URLP.s "")
-    , URLP.map EventsList (URLP.s "events")
-    , URLP.map EventCreate (URLP.s "event" </> URLP.s "new")
-    , URLP.map EventModify (URLP.s "event" </> URLP.s "edit" </> URLP.string)
-    , URLP.map RegisterRequired (URLP.s "registration" </> URLP.s "information")
+    [ URLP.map RSignin (URLP.s "")
+    , URLP.map REventsList (URLP.s "events")
+    , URLP.map REventCreate (URLP.s "event" </> URLP.s "new")
+    , URLP.map REventModify (URLP.s "event" </> URLP.s "edit" </> URLP.string)
+    , URLP.map RRegisterRequired (URLP.s "registration" </> URLP.s "information")
     ]
 -- ---------------------------
 -- UPDATE
 -- ---------------------------
+
+type Msg
+    = SignIn
+    | SignedIn String
+    | UrlChanged Url.Url
+    | LinkClicked Browser.UrlRequest
+    | NoOp
+    | EventListMsg EL.Msg
+    | EventCreateMsg EC.Msg
+    | EventEditMsg EE.Msg
+
 
 
 
@@ -73,168 +103,53 @@ update message model =
     case message of
         NoOp -> (model, Cmd.none)
         SignedIn token ->
-            ({ model | idToken = token}, Nav.pushUrl model.key "/events")
+            let oldSession = model.session
+                newSession = { oldSession | idToken = token}
+            in ({ model | session = newSession }, Nav.pushUrl model.key "/events")
         SignIn -> (model, signIn ())
-        Reload page ->
-            case page of
-                Events -> (model, loadEvents model.idToken)
-                _ -> (model, Cmd.none)
-        GotEvents res ->
-            case res of
-                Ok r ->
-                    ( { model | events = r }, Cmd.none )
-                Err err ->
-                    ( { model | serverMessage = "Error: " ++ httpErrorToString err }, handleHttpError model.key err )
-        GotEvent res ->
-            case res of
-                Ok r ->
-                    ( { model | currentEvent = Just r }, Cmd.none )
-                Err err ->
-                    ( { model | serverMessage = "Error: " ++ httpErrorToString err }, handleHttpError model.key err)
-        UrlChanged url -> 
-            case (URLP.parse route url) of 
-                Just EventsList -> ( { model | url = url }, loadEvents model.idToken)
-                Just (EventModify uuid) -> ( {model | url = url}, loadEvent model.idToken uuid)
-                Just EventCreate -> ( {model | url = url, currentEvent = Just (Event "" [] "" "")}, Cmd.none)
-                _ -> ( { model | url = url }, Cmd.none )
+        UrlChanged url -> stepUrl url model
         LinkClicked urlRequest -> 
             case urlRequest of
                 Browser.Internal url -> (model, Nav.pushUrl model.key (Url.toString url) )
                 Browser.External href -> ( model, Nav.load href )
-        SaveEvent event -> 
-                    (model, saveEvent model.idToken event)
-        DeleteEvent event -> 
-                    (model, deleteEvent model.idToken event)
-        CreateEvent event -> 
-                    (model, createEvent model.idToken event)
-        SavedEvent res ->
-            case res of
-                Ok r ->
-                    case model.currentEvent of
-                        Just ev -> 
-                            ( model, Nav.pushUrl model.key (URLB.absolute ["events"] []))
-                        Nothing -> (model, Cmd.none)
-                Err err ->
-                    ( { model | serverMessage = "Error: " ++ httpErrorToString err }, handleHttpError model.key err)
-        DeletedEvent res ->
-            case res of
-                Ok r ->
-                    ( { model | currentEvent = Nothing }, Nav.pushUrl model.key (URLB.absolute ["events"] [] ))
-                Err err ->
-                    ( { model | serverMessage = "Error: " ++ httpErrorToString err }, handleHttpError model.key err)
-        EventModified modifyAction ->
-            case model.currentEvent of
-                Just event ->
-                    case modifyAction of
-                        Swap a b -> 
-                            let
-                                oldCurrentEvent = event
-                                newCurrentEvent = Just ( { oldCurrentEvent | slides = swapAt a b event.slides })
-                            in ({model | currentEvent = newCurrentEvent}, Cmd.none)
-                        ChangeSlide idx slide -> 
-                            let
-                                oldCurrentEvent = event
-                                newCurrentEvent = Just { oldCurrentEvent | slides = setAt idx slide event.slides }
-                            in ({model | currentEvent = newCurrentEvent}, Cmd.none)
-                        AddSlide -> 
-                            let
-                                oldCurrentEvent = event
-                                newCurrentEvent = Just ( { oldCurrentEvent | slides = Slide "" 0 :: event.slides })
-                            in ({model | currentEvent = newCurrentEvent}, Cmd.none)
-                        DeleteSlide idx -> 
-                            let
-                                deleteItem i list = List.take i list ++ List.drop (i + 1) list
-                                oldCurrentEvent = event
-                                newCurrentEvent = Just ( { oldCurrentEvent | slides = deleteItem idx event.slides })
-                            in ({model | currentEvent = newCurrentEvent}, Cmd.none)
-                        NameChanged name ->
-                            let
-                                oldCurrentEvent = event
-                                newCurrentEvent = Just ( { oldCurrentEvent | name = name})
-                            in ({model | currentEvent = newCurrentEvent}, Cmd.none)
-                Nothing -> ( model, Cmd.none ) 
+        EventListMsg msg -> case model.page of
+            EventList eventList -> stepEventList model (EL.update msg eventList)
+            _ -> (model, Cmd.none)
+        EventEditMsg msg -> case model.page of
+            EventEdit eventEdit -> stepEventEdit model (EE.update msg eventEdit)
+            _ -> (model, Cmd.none)
+        EventCreateMsg msg -> case model.page of
+            EventCreate eventCreate -> stepEventCreate model (EC.update msg eventCreate)
+            _ -> (model, Cmd.none)
+
+stepUrl : Url.Url -> Model -> (Model, Cmd Msg)
+stepUrl url model =
+            case (URLP.parse route url) of 
+                Just REventsList -> stepEventList model (EL.init model.session)
+                Just (REventModify uuid) -> stepEventEdit model (EE.init uuid model.session)
+                Just REventCreate -> stepEventCreate model (EC.init model.session)
+                _ -> ( { model | url = url }, Cmd.none )
+
+stepEventList : Model -> ( EL.Model, Cmd EL.Msg ) -> ( Model, Cmd Msg )
+stepEventList model (eventList, cmds) =
+  ( { model | page = EventList eventList }
+  , Cmd.map EventListMsg cmds
+  )
+
+stepEventEdit : Model -> ( EE.Model, Cmd EE.Msg ) -> ( Model, Cmd Msg )
+stepEventEdit model (eventEdit, cmds) =
+  ( { model | page = EventEdit eventEdit}
+  , Cmd.map EventEditMsg cmds
+  )
+
+stepEventCreate : Model -> ( EC.Model, Cmd EC.Msg ) -> ( Model, Cmd Msg )
+stepEventCreate model (eventCreate, cmds) =
+  ( { model | page = EventCreate eventCreate }
+  , Cmd.map EventCreateMsg cmds
+  )
 
 
-loadEvents : String -> Cmd Msg
-loadEvents idToken = Http.request
-    { method = "GET"
-    , headers = [Http.header "Authorization" ("Bearer " ++ idToken)]
-    , body = Http.emptyBody
-    , url = baseURL ++ "/api/events"
-    , expect = Http.expectJson GotEvents eventsDecoder
-    , timeout = Nothing
-    , tracker = Nothing
-    }
 
-loadEvent : String -> String -> Cmd Msg
-loadEvent idToken eventId = Http.request
-    { method = "GET"
-    , headers = [Http.header "Authorization" ("Bearer " ++ idToken)]
-    , body = Http.emptyBody
-    , url = baseURL ++ "/api/event/" ++ eventId
-    , expect = Http.expectJson GotEvent eventDecoder
-    , timeout = Nothing
-    , tracker = Nothing
-    }
-
-saveEvent : String -> Event -> Cmd Msg
-saveEvent idToken event = Http.request
-    { method = "PUT"
-    , headers = [Http.header "Authorization" ("Bearer " ++ idToken)]
-    , body = Http.jsonBody <| eventEncoder event
-    , url = baseURL ++ "/api/event/" ++ event.eventId
-    , expect = Http.expectJson SavedEvent eventDecoder
-    , timeout = Nothing
-    , tracker = Nothing
-    }
-
-deleteEvent : String -> Event -> Cmd Msg
-deleteEvent idToken event = Http.request
-    { method = "Delete"
-    , headers = [Http.header "Authorization" ("Bearer " ++ idToken)]
-    , body = Http.jsonBody <| eventEncoder event
-    , url = baseURL ++ "/api/event/" ++ event.eventId
-    , expect = Http.expectWhatever DeletedEvent 
-    , timeout = Nothing
-    , tracker = Nothing
-    }
-
-createEvent : String -> Event -> Cmd Msg
-createEvent idToken event = Http.request
-    { method = "PUT"
-    , headers = [Http.header "Authorization" ("Bearer " ++ idToken)]
-    , body = Http.jsonBody <| eventEncoder event
-    , url = baseURL ++ "/api/event/new" 
-    , expect = Http.expectJson SavedEvent eventDecoder
-    , timeout = Nothing
-    , tracker = Nothing
-    }
-
-
-httpErrorToString : Http.Error -> String
-httpErrorToString err =
-    case err of
-        BadUrl url ->
-            "BadUrl: " ++ url
-
-        Timeout ->
-            "Timeout"
-
-        NetworkError ->
-            "NetworkError"
-
-        BadStatus _ ->
-            "BadStatus"
-
-        BadBody s ->
-            "BadBody: " ++ s
-
-handleHttpError : Nav.Key -> Http.Error -> Cmd Msg
-handleHttpError key err = 
-    case err of
-        BadStatus 401 ->
-            Nav.pushUrl key <| URLB.absolute ["registration", "information"] []
-        _ -> Cmd.none
 
 
 
@@ -288,11 +203,12 @@ view model =
         , Grid.row []
             [ Grid.col []
                 [
-                    case (model.idToken, URLP.parse route model.url) of
-                        (_, Just EventsList) -> eventListView model
-                        (_, Just (EventModify eventName)) -> eventEditView model
-                        (_, Just EventCreate) -> eventCreateView model
-                        (_, Just RegisterRequired) -> registerInformationView model
+                    case (model.session.idToken, model.page) of
+                        ("", _) -> loginView model
+                        (_, EventList el) -> Html.map EventListMsg (EL.view el)
+                        (_, EventCreate ec) -> Html.map EventCreateMsg (EC.view ec)
+                        (_, EventEdit ee) -> Html.map EventEditMsg (EE.view ee)
+                        (_, RegisterRequired) -> registerInformationView model
                         (_, _) -> loginView model
                 ]
             ]

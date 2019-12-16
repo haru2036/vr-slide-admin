@@ -1,6 +1,6 @@
 module Decoder exposing (eventsDecoder, eventDecoder, slideDecoder)
 
-import Model exposing (..)
+import Types exposing (..)
 import Json.Decode as Decode
 
 -- ---------------------------
