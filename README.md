@@ -1,6 +1,9 @@
+
+# VRC-LT スライド管理ツール
+VRC-LTのスライドを管理するためのWebフロントツールです。
+' Elm 0.19.1 with Webpack 4, Hot Reloading & Babel 7 'をベースに作られています。
 # Elm 0.19.1 with Webpack 4, Hot Reloading & Babel 7
 
-[![CircleCI](https://circleci.com/gh/simonh1000/elm-webpack-starter.svg?style=svg)](https://circleci.com/gh/simonh1000/elm-webpack-starter)
 
 Elm dev environment with hot-loading (i.e. state is retained as you edit your code - Hot Module Reloading, HMR)). I use this daily for my professional work. Like elm-community/elm-webpack-starter but using Webpack 4.
 
