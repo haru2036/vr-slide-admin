@@ -1,4 +1,4 @@
-module Example exposing (fuzzTest, unitTest, viewTest)
+module Example exposing (unitTest)
 
 import Expect exposing (Expectation)
 import Fuzz exposing (Fuzzer, int, list, string)
@@ -8,6 +8,16 @@ import Test.Html.Query as Query
 import Test.Html.Selector exposing (tag, text)
 
 
+-- TODO Add test
+
+unitTest : Test
+unitTest =
+    describe "simple unit test"
+        [ test "do nothing" <|
+            \() -> Expect.equal 0 0 
+        ]
+
+{- 
 {-| See <https://github.com/elm-community/elm-test>
 -}
 unitTest : Test
@@ -50,3 +60,4 @@ viewTest =
                     |> Query.first
                     |> Query.has [ text "+ 1" ]
         ]
+-}
